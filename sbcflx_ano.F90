@@ -179,6 +179,8 @@ CONTAINS
                fwrnf_ano (ji,jj) = sf(jp_fwrnf )%fnow(ji,jj,1) * tmask(ji,jj,1)
             END DO
          END DO
+        
+         hfisf_ano(:,:) = fwisf_ano(:,:) * lfusisf !Yona compute hfisf from fwfisf (latent only here, sensible added in sbcisf)
 
          CALL lbc_lnk( utau_ano(:,:), 'U', -1. )
          CALL lbc_lnk( vtau_ano(:,:), 'V', -1. )
@@ -189,11 +191,24 @@ CONTAINS
          CALL lbc_lnk( fwisf_ano (:,:), 'T',  1. )
          CALL lbc_lnk( hfrnf_ano (:,:), 'T',  1. )
          CALL lbc_lnk( fwrnf_ano (:,:), 'T',  1. )
+
+         ! Yona add anos
+         IF( ln_heat_ano ) THEN
+             qsr(:,:) = qsr(:,:) + qsr_ano(:,:)
+             qns(:,:) = qns(:,:) + qns_ano(:,:)
+         ENDIF
+         IF( ln_fwf_ano ) THEN
+             emp(:,:) = emp(:,:) + emp_ano(:,:)
+             sfx(:,:) = sfx(:,:) + sfx_ano(:,:)
+         ENDIF
+         IF( ln_stress_ano ) THEN
+             utau(:,:) = utau(:,:) + utau_ano(:,:)
+             vtau(:,:) = vtau(:,:) + vtau_ano(:,:)
+         ENDIF
+
          !                                                        ! add to qns the heat due to e-p
          !!clem qns(:,:) = qns(:,:) - emp(:,:) * sst_m(:,:) * rcp        ! mass flux is at SST
          !
-         hfisf_ano(:,:) = fwisf_ano(:,:) * lfusisf !Yona compute hfisf from fwfisf
-
          !                                                 
          CALL iom_put( "emp_ano", emp_ano )                ! upward water flux
          CALL iom_put( "sfx_ano", sfx_ano  )                        ! downward salt flux  

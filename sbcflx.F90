@@ -184,18 +184,6 @@ CONTAINS
       !! Yona : add anomalies if they are activated
       IF( ln_flx_ano ) THEN
          CALL sbc_flx_ano( kt )
-         IF( ln_heat_ano ) THEN
-            qsr(:,:) = qsr(:,:) + qsr_ano(:,:)
-            qns(:,:) = qns(:,:) + qns_ano(:,:)
-         ENDIF
-         IF( ln_fwf_ano ) THEN
-            emp(:,:) = emp(:,:) + emp_ano(:,:)
-            sfx(:,:) = sfx(:,:) + sfx_ano(:,:)
-         ENDIF
-         IF( ln_stress_ano ) THEN
-            utau(:,:) = utau(:,:) + utau_ano(:,:)
-            vtau(:,:) = vtau(:,:) + vtau_ano(:,:)
-         ENDIF
       ENDIF
       !! Yona
       !
