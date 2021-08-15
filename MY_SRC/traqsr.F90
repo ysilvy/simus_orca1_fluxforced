@@ -32,6 +32,7 @@ MODULE traqsr
    USE lib_mpp         ! MPP library
    USE wrk_nemo       ! Memory Allocation
    USE timing         ! Timing
+   USE sbcflx_ano, ONLY : ln_heat_ano, qsr_ano !Yona
 
    IMPLICIT NONE
    PRIVATE
@@ -111,6 +112,7 @@ CONTAINS
       REAL(wp) ::   zlogc, zlogc2, zlogc3
       REAL(wp), POINTER, DIMENSION(:,:  ) :: zekb, zekg, zekr
       REAL(wp), POINTER, DIMENSION(:,:,:) :: ze0, ze1, ze2, ze3, zea, ztrdt, zchl3d
+      REAL(wp), DIMENSION(jpi,jpj,jpk)    :: zze0, zze1, zze2, zze3, zzea, zqsr_hc   
       !!--------------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('tra_qsr')
@@ -135,6 +137,7 @@ CONTAINS
       IF( kt == nit000 ) THEN                     ! Set the forcing field at nit000 - 1
          !                                        ! -----------------------------------
          qsr_hc(:,:,:) = 0.e0
+         IF( .NOT. ln_heat_ano )   zqsr_hc(:,:,:) = 0.e0 !!clemfra
          !
          IF( ln_rstart .AND.    &                    ! Restart: read in restart file
               & iom_varid( numror, 'qsr_hc_b', ldstop = .FALSE. ) > 0 ) THEN
@@ -170,17 +173,37 @@ CONTAINS
          END DO
          CALL iom_put( 'qsr3d', etot3 )   ! Shortwave Radiation 3D distribution
          ! clem: store attenuation coefficient of the first ocean level
-         IF ( ln_qsr_ice ) THEN
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               IF ( qsr(ji,jj) /= 0._wp ) THEN
+                  fraqsr_1lev(ji,jj) = ( qsr_hc(ji,jj,1) / ( r1_rau0_rcp * qsr(ji,jj) ) )
+               ELSE
+                  fraqsr_1lev(ji,jj) = 1.
+               ENDIF
+            END DO
+         END DO
+         !!clemfra
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               IF ( qsr(ji,jj) /= 0._wp ) THEN
+                  fraqsr(ji,jj,1) = ( qsr_hc(ji,jj,1) / ( r1_rau0_rcp * qsr(ji,jj) ) )
+               ELSE
+                  fraqsr(ji,jj,1) = 1.
+               ENDIF
+            END DO
+         END DO
+         DO jk = 2, jpkm1
             DO jj = 1, jpj
                DO ji = 1, jpi
                   IF ( qsr(ji,jj) /= 0._wp ) THEN
-                     fraqsr_1lev(ji,jj) = ( qsr_hc(ji,jj,1) / ( r1_rau0_rcp * qsr(ji,jj) ) )
+                     fraqsr(ji,jj,jk) = ( qsr_hc(ji,jj,jk) / ( r1_rau0_rcp * qsr(ji,jj) ) )
                   ELSE
-                     fraqsr_1lev(ji,jj) = 1.
+                     fraqsr(ji,jj,jk) = 0.
                   ENDIF
                END DO
             END DO
-         ENDIF
+         ENDDO
+         !!clemfra
          !                                        ! ============================================== !
       ELSE                                        !  Ocean alone :
          !                                        ! ============================================== !
@@ -253,6 +276,13 @@ CONTAINS
                ze3(:,:,1) =             zpar_varsw(:,:)   * qsr(:,:)
                zea(:,:,1) =                                 qsr(:,:)
                !!clem !Yona
+               IF( .NOT. ln_heat_ano ) THEN
+                  zze0(:,:,1) = ( 1. - 3. * zpar_varsw(:,:) ) * (qsr(:,:)+qsr_ano(:,:))
+                  zze1(:,:,1) =             zpar_varsw(:,:)   * (qsr(:,:)+qsr_ano(:,:))
+                  zze2(:,:,1) =             zpar_varsw(:,:)   * (qsr(:,:)+qsr_ano(:,:))
+                  zze3(:,:,1) =             zpar_varsw(:,:)   * (qsr(:,:)+qsr_ano(:,:))
+                  zzea(:,:,1) =                                 (qsr(:,:)+qsr_ano(:,:))    
+               ENDIF
                !
                DO jk = 2, nksr+1
                   !
@@ -282,6 +312,21 @@ CONTAINS
                         zea(ji,jj,jk) = ( zc0 + zc1 + zc2 + zc3 ) * tmask(ji,jj,jk)
                      END DO
                   END DO
+                  IF( .NOT. ln_heat_ano ) THEN
+                     DO jj = 1, jpj
+                        DO ji = 1, jpi
+                           zc0 = zze0(ji,jj,jk-1) * EXP( - fse3t(ji,jj,jk-1) * xsi0r     )
+                           zc1 = zze1(ji,jj,jk-1) * EXP( - fse3t(ji,jj,jk-1) * zekb(ji,jj) )
+                           zc2 = zze2(ji,jj,jk-1) * EXP( - fse3t(ji,jj,jk-1) * zekg(ji,jj) )
+                           zc3 = zze3(ji,jj,jk-1) * EXP( - fse3t(ji,jj,jk-1) * zekr(ji,jj) )
+                           zze0(ji,jj,jk) = zc0
+                           zze1(ji,jj,jk) = zc1
+                           zze2(ji,jj,jk) = zc2
+                           zze3(ji,jj,jk) = zc3
+                           zzea(ji,jj,jk) = ( zc0 + zc1 + zc2 + zc3 ) * tmask(ji,jj,jk)
+                        END DO
+                     END DO
+                  ENDIF
                END DO
                !
                DO jk = 1, nksr                                        ! compute and add qsr trend to ta
@@ -289,6 +334,13 @@ CONTAINS
                END DO
                zea(:,:,nksr+1:jpk) = 0.e0     ! below 400m set to zero
                CALL iom_put( 'qsr3d', zea )   ! Shortwave Radiation 3D distribution
+
+               IF( .NOT. ln_heat_ano ) THEN
+                  DO jk = 1, nksr                                     ! compute and add qsr trend to ta
+                     zqsr_hc(:,:,jk) = r1_rau0_rcp * ( zzea(:,:,jk) - zzea(:,:,jk+1) )
+                  END DO
+                  zzea(:,:,nksr+1:jpk) = 0.e0 ! below 400m set to zero
+               ENDIF
                !
                IF ( ln_qsr_ice ) THEN    ! store attenuation coefficient of the first ocean level
 !CDIR NOVERRCHK
@@ -320,7 +372,7 @@ CONTAINS
                   END DO
                   !
                ENDIF
-               !
+
             ELSE                                                 !*  Constant Chlorophyll
                DO jk = 1, nksr
                   qsr_hc(:,:,jk) =  etot3(:,:,jk) * qsr(:,:)
@@ -329,7 +381,39 @@ CONTAINS
                IF( ln_qsr_ice ) THEN
                   fraqsr_1lev(:,:) = etot3(:,:,1) / r1_rau0_rcp
                ENDIF
+               !!clemfra
+               IF( .NOT. ln_heat_ano ) THEN
+                  DO jk = 1, nksr
+                     zqsr_hc(:,:,jk) =  etot3(:,:,jk) * ( qsr(:,:) + qsr_ano(:,:) )
+                  END DO
+               ENDIF
            ENDIF
+
+           !!clemfra store attenuation coefficient
+           IF( .NOT. ln_heat_ano ) THEN
+              WHERE( ( qsr(:,:) + qsr_ano(:,:) ) /= 0._wp )
+                 fraqsr(:,:,1) = ( zqsr_hc(:,:,1) / ( r1_rau0_rcp * ( qsr(:,:) + qsr_ano(:,:) ) ) )
+              ELSEWHERE
+                 fraqsr(:,:,1) = 1._wp
+              ENDWHERE
+              DO jk = 2, nksr
+                 WHERE( ( qsr(:,:) + qsr_ano(:,:) ) /= 0._wp )
+                    fraqsr(:,:,jk) = ( zqsr_hc(:,:,jk) / ( r1_rau0_rcp * ( qsr(:,:) + qsr_ano(:,:) ) ) )
+                 ELSEWHERE
+                    fraqsr(:,:,jk) = 0._wp
+                 ENDWHERE
+              ENDDO                 
+           ELSE
+              WHERE( qsr(:,:) /= 0._wp )   ;   fraqsr(:,:,1) = ( qsr_hc(:,:,1) / ( r1_rau0_rcp * qsr(:,:) ) )
+              ELSEWHERE                    ;   fraqsr(:,:,1) = 1._wp
+              ENDWHERE
+              DO jk = 2, nksr
+                 WHERE( qsr(:,:) /= 0._wp )   ;   fraqsr(:,:,jk) = ( qsr_hc(:,:,jk) / ( r1_rau0_rcp * qsr(:,:) ) )
+                 ELSEWHERE                    ;   fraqsr(:,:,jk) = 0._wp
+                 ENDWHERE
+              ENDDO                 
+           ENDIF
+           !!clemfra
 
          ENDIF
          !                                                ! ------------------------- !
@@ -345,6 +429,9 @@ CONTAINS
                         zc0 = zz0 * EXP( -fsdepw(ji,jj,jk  )*xsi0r ) + zz1 * EXP( -fsdepw(ji,jj,jk  )*xsi1r )
                         zc1 = zz0 * EXP( -fsdepw(ji,jj,jk+1)*xsi0r ) + zz1 * EXP( -fsdepw(ji,jj,jk+1)*xsi1r )
                         qsr_hc(ji,jj,jk) = qsr(ji,jj) * ( zc0*tmask(ji,jj,jk) - zc1*tmask(ji,jj,jk+1) )
+                        !!clemfra
+                        fraqsr(ji,jj,jk) = ( zc0*tmask(ji,jj,jk) - zc1*tmask(ji,jj,jk+1) ) / r1_rau0_rcp
+                        !!clemfra
                      END DO
                   END DO
                END DO
@@ -371,7 +458,15 @@ CONTAINS
                IF ( ln_qsr_ice ) THEN
                   fraqsr_1lev(:,:) = etot3(:,:,1) / r1_rau0_rcp
                ENDIF
-               !
+               !!clemfra
+               DO jk = 1, nksr
+                  DO jj = 1, jpj
+                     DO ji = 1, jpi
+                        fraqsr(ji,jj,jk) = etot3(ji,jj,jk) / r1_rau0_rcp
+                     ENDDO
+                  ENDDO
+               ENDDO
+               !!clemfra
             ENDIF
             !
          ENDIF
@@ -386,7 +481,13 @@ CONTAINS
             END DO
          END DO
          !
+
       ENDIF
+
+      ! Yona
+      CALL iom_put( 'fraqsr', fraqsr )   ! Fraction of Shortwave Radiation Absorption 
+      ! Yona
+
       !
       IF( lrst_oce ) THEN   !                  Write in the ocean restart file
          !                                     *******************************
@@ -396,6 +497,7 @@ CONTAINS
          IF(lwp) WRITE(numout,*) '~~~~'
          CALL iom_rstput( kt, nitrst, numrow, 'qsr_hc_b'   , qsr_hc      )
          CALL iom_rstput( kt, nitrst, numrow, 'fraqsr_1lev', fraqsr_1lev )   ! default definition in sbcssm
+         CALL iom_rstput( kt, nitrst, numrow, 'fraqsr'     , fraqsr      )
          !
       ENDIF
 
@@ -657,12 +759,21 @@ CONTAINS
       ENDIF
       !
       ! initialisation of fraqsr_1lev used in sbcssm
-      IF( iom_varid( numror, 'fraqsr_1lev', ldstop = .FALSE. ) > 0 ) THEN
+      IF( ln_rstart .AND. iom_varid( numror, 'fraqsr_1lev', ldstop = .FALSE. ) > 0 ) THEN
          CALL iom_get( numror, jpdom_autoglo, 'fraqsr_1lev'  , fraqsr_1lev  )
       ELSE
          fraqsr_1lev(:,:) = 1._wp   ! default definition
       ENDIF
       !
+      !!clemfra initialisation of fraqsr used in trc
+      IF( ln_rstart .AND. iom_varid( numror, 'fraqsr', ldstop = .FALSE. ) > 0 ) THEN
+         CALL iom_get( numror, jpdom_autoglo, 'fraqsr'  , fraqsr  )
+      ELSE
+         fraqsr(:,:,1)     = 1._wp   ! default definition
+         fraqsr(:,:,2:jpk) = 0._wp
+      ENDIF
+      !!clemfra
+
       CALL wrk_dealloc( jpi, jpj,      zekb, zekg, zekr        )
       CALL wrk_dealloc( jpi, jpj, jpk, ze0, ze1, ze2, ze3, zea )
       !

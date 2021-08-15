@@ -22,6 +22,7 @@ MODULE sbcflx
    USE lib_mpp         ! distribued memory computing library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE sbcflx_ano !Yona
+   USE lib_fortran !Yona
 
    IMPLICIT NONE
    PRIVATE
@@ -39,6 +40,10 @@ MODULE sbcflx
    INTEGER , PARAMETER ::   jp_sivolu  = 8! index of sea ice volume per area !Yona
    INTEGER , PARAMETER ::   jp_siconc  = 9! index of sea ice fraction !Yona
    TYPE(FLD), ALLOCATABLE, DIMENSION(:) ::   sf    ! structure of input fields (file informations, fields read)
+
+   !! clem : to be used in tranxt
+   REAL(wp), PUBLIC ::   rn_frzup, rn_dtfrz
+   LOGICAL , PUBLIC ::   ln_frz, ln_frzglob
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
@@ -92,14 +97,17 @@ CONTAINS
       REAL(wp) ::   zrhoa  = 1.22         ! Air density kg/m3
       REAL(wp) ::   zcdrag = 1.5e-3       ! drag coefficient
       REAL(wp) ::   ztx, zty, zmod, zcoef ! temporary variables
+      REAL(wp) ::   zqfrz                 ! Yona global mean of qfrz
       !!
       CHARACTER(len=100) ::  cn_dir                                       ! Root directory for location of flx files
       TYPE(FLD_N), DIMENSION(jpfld) ::   slf_i                            ! array of namelist information structures
       TYPE(FLD_N) ::   sn_utau, sn_vtau, sn_qtot, sn_qsr, sn_emp, sn_sfx, sn_sithic, sn_sivolu, sn_siconc  !Yona ! informations about the fields to be read
       NAMELIST/namsbc_flx/ cn_dir, sn_utau, sn_vtau, sn_qtot, sn_qsr, sn_emp, sn_sfx, sn_sithic, sn_sivolu, sn_siconc !Yona
+      NAMELIST/namsbc_flx/ ln_frz, rn_frzup, rn_dtfrz, ln_frzglob
       !!---------------------------------------------------------------------
       !
       IF( kt == nit000 ) THEN                ! First call kt=nit000
+
          ! set file information
          REWIND( numnam_ref )              ! Namelist namsbc_flx in reference namelist : Files for fluxes
          READ  ( numnam_ref, namsbc_flx, IOSTAT = ios, ERR = 901)
@@ -162,6 +170,13 @@ CONTAINS
          !
         CALL lbc_lnk_multi( utau, 'U', -1. , vtau, 'V', -1. ) !Yona: added lbc_lnk otherwise model blows up (bc fields from coupled model?)
         CALL lbc_lnk_multi( qns,'T',1., emp,'T',1., sfx,'T',1., qsr,'T',1., hcpl_i,'T',1., vcpl_i,'T',1., fr_i,'T',1. ) !Yona
+
+         !! Yona : add global qfrz to qns
+         IF( ln_frz .AND. ln_frzglob ) THEN
+            zqfrz = glob_sum(qfrz_m(:,:) * e1t(:,:) * e2t(:,:) * tmask(:,:,1)) / glob_sum(e1t(:,:) * e2t(:,:) * tmask(:,:,1))
+            qns(:,:) = ( qns(:,:) - zqfrz ) * tmask(:,:,1)
+         ENDIF
+         !!Yona
 
          !                                                        ! module of wind stress and wind speed at T-point
 

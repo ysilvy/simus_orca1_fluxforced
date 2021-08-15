@@ -143,6 +143,7 @@ MODULE sbc_oce
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   ssh_m     !: mean (nn_fsbc time-step) sea surface height                [m]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   e3t_m     !: mean (nn_fsbc time-step) sea surface layer thickness       [m]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   frq_m     !: mean (nn_fsbc time-step) fraction of solar net radiation absorbed in the 1st T level [-]
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   qfrz_m     !: mean (nn_fsbc time-step) supercooling heat flux [W/m2]
 
    !! * Substitutions
 #  include "vectopt_loop_substitute.h90"
@@ -175,7 +176,7 @@ CONTAINS
          !
       ALLOCATE( tprecip(jpi,jpj) , sprecip(jpi,jpj) , fr_i(jpi,jpj) ,     &
          &      atm_co2(jpi,jpj) , atm_n2o(jpi,jpj) , vcpl_i(jpi,jpj), hcpl_i(jpi,jpj),                   &
-         &      ssu_m  (jpi,jpj) , sst_m(jpi,jpj) , frq_m(jpi,jpj) ,      &
+         &      ssu_m  (jpi,jpj) , sst_m(jpi,jpj) , frq_m(jpi,jpj) , qfrz_m(jpi,jpj) ,     &
          &      ssv_m  (jpi,jpj) , sss_m(jpi,jpj) , ssh_m(jpi,jpj) , STAT=ierr(4) )
          !
 #if defined key_vvl

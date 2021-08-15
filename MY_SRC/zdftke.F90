@@ -64,6 +64,8 @@ MODULE zdftke
     USE sbc_ice, ONLY: ht_i
 #endif
 !CE
+    USE sbcrnf, ONLY: rnf_tsc  !Yona
+    USE sbcisf, ONLY: risf_tsc !Yona
 
    IMPLICIT NONE
    PRIVATE
@@ -107,6 +109,10 @@ MODULE zdftke
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   e_dis, e_mix   !: dissipation and mixing turbulent lengh scales
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   e_pdl, e_ric   !: prandl and local Richardson numbers
 #endif
+   !! Yona
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   Bt             ! Surface buoyancy flux from heat fluxes [m2/s3]
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   Bs             ! Surface buoyancy flux from freshwater and salt fluxes
+   !! Yona
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
@@ -127,7 +133,8 @@ CONTAINS
          &      e_dis(jpi,jpj,jpk) , e_mix(jpi,jpj,jpk) ,                          &
          &      e_pdl(jpi,jpj,jpk) , e_ric(jpi,jpj,jpk) ,                          &
 #endif
-         &      htau  (jpi,jpj)    , dissl(jpi,jpj,jpk) , STAT= zdf_tke_alloc      )
+         &      htau  (jpi,jpj)    , dissl(jpi,jpj,jpk) ,                          &
+         &      Bt    (jpi,jpj)    , Bs   (jpi,jpj)        , STAT= zdf_tke_alloc      )
          !
       IF( lk_mpp             )   CALL mpp_sum ( zdf_tke_alloc )
       IF( zdf_tke_alloc /= 0 )   CALL ctl_warn('zdf_tke_alloc: failed to allocate arrays')
@@ -180,9 +187,35 @@ CONTAINS
       !!              Axell, JGR, 2002
       !!              Bruchard OM 2002
       !!----------------------------------------------------------------------
-      INTEGER, INTENT(in) ::   kt   ! ocean time step
+      INTEGER, INTENT(in) ::   kt     ! ocean time step
+      INTEGER             ::   ji, jj ! dummy loop arguments !Yona
+      REAL(wp)            ::   zbeta, zthermal !Yona
       !!----------------------------------------------------------------------
       !
+
+      !!Yona - compute surface buoyancy flux T and S components
+      DO jj = 1, jpj
+         DO ji = 1, jpi
+            zthermal = rab_n(ji,jj,1,jp_tem) 
+            zbeta    = rab_n(ji,jj,1,jp_sal)
+            !
+            ! Surface buoyancy flux - heat flux contribution
+            Bt(ji,jj) = - grav * zthermal *                   & 
+                 &      ( r1_rau0_rcp * ( qsr(ji,jj) + qns(ji,jj) )  &
+                 &      + rnf_tsc(ji,jj,jp_tem) + risf_tsc(ji,jj,jp_tem) ) * tmask(ji,jj,1)
+            ! Surface buoyancy flux - freshwater and salt flux contribution
+            Bs(ji,jj) = grav * zbeta * r1_rau0 * ( ( emp(ji,jj) - rnf(ji,jj) + fwfisf(ji,jj) ) * tsn(ji,jj,1,jp_sal) &
+                 &      + sfx(ji,jj) ) * tmask(ji,jj,1)
+            !
+         END DO
+      END DO
+
+      ! output
+      CALL iom_put( 'buoflx_t', Bt(:,:))   ! [m2/s3]
+      CALL iom_put( 'buoflx_s', Bs(:,:))   ! [m2/s3]
+
+      !!Yona
+
       IF( kt /= nit000 ) THEN   ! restore before value to compute tke
          avt (:,:,:) = avt_k (:,:,:)
          avm (:,:,:) = avm_k (:,:,:)

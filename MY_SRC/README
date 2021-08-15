@@ -1,0 +1,17 @@
+This ORCA1_LIM3_PISCES/MY_SRC directory relies on NEMO 3.6 stable revision 9301
+
++ Additional diagnostics for CMIP6 : some of them for dynamics and most of them for LIM3
++ XIOS_DEV_CMIP6 revision 1309
++ Updated xml in directory ../EXP00
+  - context_nemo.xml
+  - domain_def_nemo.xml
+  - axis_def_nemo.xml
+  - grids_def_nemo.xml
+  - iodef.xml
+  - field_def_nemo-opa.xml
+  - field_def_nemo-lim.xml
+  - field_def_nemo-pisces.xml
+  - field_def_nemo-inerttrc.xml
+
++ Namelist in directory ../EXP00
+ 
